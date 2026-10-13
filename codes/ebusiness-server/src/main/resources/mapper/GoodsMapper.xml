@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- =====================================================================
+     商品 Mapper 映射文件
+     工程：ebusiness-server
+     作者：杨伟宏
+     ===================================================================== -->
+<mapper namespace="com.ebusiness.mapper.GoodsMapper">
+
+    <!-- ==========================================================
+         按商品类型统计销售情况
+         思路：订单详情 orderdetail 联订单基础 orderbasestable，
+              只累加"已付款(2)/已发货(3)/已完成(4)"的有效订单，
+              再按商品所属类型分组汇总金额与件数。
+
+         注意：无效订单的过滤必须写在 SUM(CASE WHEN ...) 里，
+              不能写在 LEFT JOIN 的 ON 条件上——写在 ON 上只是让
+              orderbasestable 一侧变 NULL，orderdetail 的行仍然参与
+              聚合，会把"待付款/已取消"的金额算进来。
+         ========================================================== -->
+    <select id="getSalesByType" resultType="java.util.HashMap">
+        SELECT gt.name AS typeName,
+               IFNULL(SUM(CASE WHEN ob.status IN (2, 3, 4)
+                               THEN od.price * od.shoppingnum ELSE 0 END), 0) AS totalAmount,
+               IFNULL(SUM(CASE WHEN ob.status IN (2, 3, 4)
+                               THEN od.shoppingnum ELSE 0 END), 0)            AS totalNum
+        FROM goodstype gt
+                 LEFT JOIN goodstable g ON g.goodstype_id = gt.id
+                 LEFT JOIN orderdetail od ON od.goodstable_id = g.id
+                 LEFT JOIN orderbasestable ob ON ob.id = od.orderbase_id
+        GROUP BY gt.id, gt.name
+        ORDER BY gt.id ASC
+    </select>
+
+    <!-- ==========================================================
+         热销商品 TOP N
+         思路：以商品表累计销量 sales 为主口径排序（这是"热销"最直观
+              的含义），同销量时再用真实成交件数 totalNum 兜底。
+              totalNum / totalAmount 同样只统计有效订单。
+              排序口径与前端展示口径保持一致，避免"榜单顺序看着乱"。
+         ========================================================== -->
+    <select id="getHotGoods" resultType="java.util.HashMap">
+        SELECT g.name        AS goodsName,
+               g.price       AS price,
+               g.sales       AS sales,
+               IFNULL(SUM(CASE WHEN ob.status IN (2, 3, 4)
+                               THEN od.shoppingnum ELSE 0 END), 0)            AS totalNum,
+               IFNULL(SUM(CASE WHEN ob.status IN (2, 3, 4)
+                               THEN od.price * od.shoppingnum ELSE 0 END), 0) AS totalAmount
+        FROM goodstable g
+                 LEFT JOIN orderdetail od ON od.goodstable_id = g.id
+                 LEFT JOIN orderbasestable ob ON ob.id = od.orderbase_id
+        WHERE g.isoff = 0
+        GROUP BY g.id, g.name, g.price, g.sales
+        ORDER BY g.sales DESC, totalNum DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- ==========================================================
+         按自然月统计销售情况（后台"销售统计"月度图表）
+         口径：只累加已付款/已发货/已完成（status IN 2,3,4）的有效订单，
+              与首页概览"销售总额"、类目销售统计完全一致。
+         起始月份由 Service 层按 "当前月往前推 N-1 个月" 算好传入，
+            避免在 SQL 里用 INTERVAL 占位符（部分驱动对占位符+INTERVAL 支持不好）。
+         ========================================================== -->
+    <select id="getSalesByMonth" resultType="java.util.HashMap">
+        SELECT DATE_FORMAT(ob.datetime, '%Y-%m')            AS month,
+               IFNULL(SUM(od.price * od.shoppingnum), 0)    AS totalAmount,
+               IFNULL(SUM(od.shoppingnum), 0)               AS totalNum
+        FROM orderbasestable ob
+                 INNER JOIN orderdetail od ON od.orderbase_id = ob.id
+        WHERE ob.status IN (2, 3, 4)
+          AND ob.datetime &gt;= #{startMonth}
+        GROUP BY DATE_FORMAT(ob.datetime, '%Y-%m')
+        ORDER BY month ASC
+    </select>
+
+</mapper>

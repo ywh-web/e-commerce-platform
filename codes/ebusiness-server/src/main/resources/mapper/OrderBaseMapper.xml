@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- =====================================================================
+     订单基础 Mapper 映射文件
+     工程：ebusiness-server
+     作者：杨伟宏
+     ===================================================================== -->
+<mapper namespace="com.ebusiness.mapper.OrderBaseMapper">
+
+    <!-- ==========================================================
+         查询订单明细（联表 orderdetail + goodstable）
+         用法：后台订单管理展开行 → 传订单 id
+              前台用户订单详情   → 传 busertableId（查该用户全部订单明细）
+         ========================================================== -->
+    <select id="getOrdersDetail" resultType="java.util.HashMap">
+        SELECT ob.id            AS orderId,
+               ob.ordernumber   AS ordernumber,
+               ob.status        AS status,
+               ob.datetime      AS datetime,
+               od.id            AS detailId,
+               od.goodsname     AS goodsname,
+               od.price         AS price,
+               od.shoppingnum   AS shoppingnum,
+               od.spec          AS spec,
+               g.picture        AS picture,
+               od.price * od.shoppingnum AS subtotal
+        FROM orderbasestable ob
+                 INNER JOIN orderdetail od ON od.orderbase_id = ob.id
+                 LEFT JOIN goodstable g ON g.id = od.goodstable_id
+        <where>
+            <if test="id != null and id > 0">
+                AND ob.id = #{id}
+            </if>
+            <if test="busertableId != null and busertableId > 0">
+                AND ob.busertable_id = #{busertableId}
+            </if>
+        </where>
+        ORDER BY ob.id DESC, od.id ASC
+    </select>
+
+    <!-- ==========================================================
+         按订单状态统计订单数量（后台订单统计饼图）
+         ========================================================== -->
+    <select id="getOrderCountByStatus" resultType="java.util.HashMap">
+        SELECT ob.status                                     AS status,
+               CASE ob.status
+                   WHEN 1 THEN '待付款'
+                   WHEN 2 THEN '已付款'
+                   WHEN 3 THEN '已发货'
+                   WHEN 4 THEN '已完成'
+                   WHEN 5 THEN '已取消'
+                   ELSE '未知'
+                   END                                       AS statusName,
+               COUNT(*)                                      AS orderCount
+        FROM orderbasestable ob
+        GROUP BY ob.status
+        ORDER BY ob.status ASC
+    </select>
+
+</mapper>

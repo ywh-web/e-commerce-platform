@@ -1,0 +1,16 @@
+# ===== 依赖与构建产物（体积大，可重新生成）=====
+node_modules/
+dist/
+target/
+*.log
+logs/
+
+# ===== WorkBuddy 工作区数据（记忆、临时文件、git 备份）=====
+.workbuddy/
+
+# ===== 编辑器 / 系统 =====
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
